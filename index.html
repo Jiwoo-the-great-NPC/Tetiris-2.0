@@ -1,1 +1,241 @@
-tetris_modes.html
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Tetris Modes</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    body {
+      background: black;
+      color: white;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      margin: 0;
+      font-family: Arial;
+    }
+    canvas { background: #111; }
+
+    #ui { margin: 10px; }
+
+    #controls button {
+      width: 60px;
+      height: 60px;
+      margin: 5px;
+      font-size: 20px;
+    }
+  </style>
+</head>
+<body>
+
+<div id="ui">
+  Mode:
+  <select id="modeSelect">
+    <option value="classic">Classic</option>
+    <option value="speed">Speed</option>
+    <option value="zen">Zen</option>
+  </select>
+
+  <div>Score: <span id="score">0</span></div>
+</div>
+
+<canvas id="game" width="300" height="600"></canvas>
+
+<!-- 📱 Mobile Controls -->
+<div id="controls">
+  <button onclick="move(-1)">◀️</button>
+  <button onclick="rotatePiece()">🔄</button>
+  <button onclick="move(1)">▶️</button>
+  <br>
+  <button onclick="softDrop()">⬇️</button>
+  <button onclick="hardDrop()">⚡</button>
+</div>
+
+<script>
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+
+const ROWS=20, COLS=10, SIZE=30;
+
+let board = Array.from({length:ROWS},()=>Array(COLS).fill(0));
+
+const pieces=[
+[[1,1,1,1]],
+[[1,1],[1,1]],
+[[0,1,0],[1,1,1]],
+[[1,0,0],[1,1,1]],
+[[0,0,1],[1,1,1]],
+[[1,1,0],[0,1,1]],
+[[0,1,1],[1,1,0]]
+];
+
+const colors=["#00f0f0","#f0f000","#a000f0","#f0a000","#0000f0","#00f000","#f00000"];
+
+let current, next;
+let score=0;
+let dropSpeed=600;
+let lastTime=0, dropCounter=0;
+
+let mode="classic";
+
+// ===== MODE SWITCH
+document.getElementById("modeSelect").addEventListener("change", e=>{
+  mode = e.target.value;
+  location.reload();
+});
+
+// ===== PIECES
+function randomPiece(){
+  let i=Math.floor(Math.random()*pieces.length);
+  return {shape:JSON.parse(JSON.stringify(pieces[i])),color:i};
+}
+
+function spawn(){
+  current = next || randomPiece();
+  current.x = 3;
+  current.y = 0;
+  next = randomPiece();
+
+  if(hit(current.x,current.y,current.shape)){
+    if(mode==="zen"){
+      board = Array.from({length:ROWS},()=>Array(COLS).fill(0));
+    } else {
+      alert("Game Over");
+      location.reload();
+    }
+  }
+}
+
+// ===== DRAW
+function drawCell(x,y,c){
+  ctx.fillStyle=colors[c];
+  ctx.fillRect(x*SIZE,y*SIZE,SIZE-1,SIZE-1);
+}
+
+// 👻 ghost
+function ghost(){
+  let y=current.y;
+  while(!hit(current.x,y+1,current.shape)) y++;
+
+  ctx.fillStyle="rgba(255,255,255,0.15)";
+  current.shape.forEach((r,dy)=>r.forEach((v,dx)=>{
+    if(v) ctx.fillRect((current.x+dx)*SIZE,(y+dy)*SIZE,SIZE-1,SIZE-1);
+  }));
+}
+
+function draw(){
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+
+  ghost();
+
+  for(let y=0;y<ROWS;y++){
+    for(let x=0;x<COLS;x++){
+      if(board[y][x]) drawCell(x,y,board[y][x]-1);
+    }
+  }
+
+  current.shape.forEach((r,dy)=>r.forEach((v,dx)=>{
+    if(v) drawCell(current.x+dx,current.y+dy,current.color);
+  }));
+}
+
+// ===== LOGIC
+function hit(x,y,shape){
+  for(let dy=0;dy<shape.length;dy++){
+    for(let dx=0;dx<shape[dy].length;dx++){
+      if(!shape[dy][dx]) continue;
+      let nx=x+dx, ny=y+dy;
+      if(nx<0||nx>=COLS||ny>=ROWS) return true;
+      if(ny>=0 && board[ny][nx]) return true;
+    }
+  }
+  return false;
+}
+
+function merge(){
+  current.shape.forEach((r,dy)=>r.forEach((v,dx)=>{
+    if(v) board[current.y+dy][current.x+dx]=current.color+1;
+  }));
+}
+
+function rotate(s){
+  return s[0].map((_,i)=>s.map(r=>r[i]).reverse());
+}
+
+function clearLines(){
+  board = board.filter(row=>!row.every(c=>c));
+  while(board.length<ROWS)
+    board.unshift(Array(COLS).fill(0));
+
+  score++;
+  document.getElementById("score").innerText=score;
+}
+
+function drop(){
+  current.y++;
+  if(hit(current.x,current.y,current.shape)){
+    current.y--;
+    merge();
+    clearLines();
+    spawn();
+  }
+}
+
+// ===== CONTROLS (PC)
+document.addEventListener("keydown",e=>{
+  const k=e.key.toLowerCase();
+
+  if(k==="a"||k==="arrowleft") move(-1);
+  if(k==="d"||k==="arrowright") move(1);
+  if(k==="s"||k==="arrowdown") softDrop();
+  if(k==="w"||k==="arrowup") rotatePiece();
+  if(k===" ") hardDrop();
+});
+
+// ===== CONTROLS (MOBILE + PC)
+function move(dir){
+  current.x+=dir;
+  if(hit(current.x,current.y,current.shape)) current.x-=dir;
+}
+
+function rotatePiece(){
+  let r=rotate(current.shape);
+  let o=current.shape;
+  current.shape=r;
+  if(hit(current.x,current.y,current.shape)) current.shape=o;
+}
+
+function softDrop(){
+  drop();
+}
+
+function hardDrop(){
+  while(!hit(current.x,current.y+1,current.shape)) current.y++;
+  drop();
+}
+
+// ===== LOOP (SMOOTH)
+function update(time=0){
+  const delta = time - lastTime;
+  lastTime = time;
+
+  dropCounter += delta;
+
+  if(mode==="speed") dropSpeed = 300;
+
+  if(dropCounter > dropSpeed){
+    drop();
+    dropCounter = 0;
+  }
+
+  draw();
+  requestAnimationFrame(update);
+}
+
+// START
+next=randomPiece();
+spawn();
+update();
+</script>
+
+</body>
+</html>
